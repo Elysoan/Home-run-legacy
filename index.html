@@ -84,6 +84,7 @@
   .player-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;}
   .player-name{ font-size:32px; line-height:1; color:var(--chalk);}
   .player-sub{ font-size:14px; color:var(--blue-soft); font-family:'Work Sans'; text-transform:none; font-weight:600; letter-spacing:0;}
+  .player-sub.trait-tag{ color:var(--stat-mid); font-size:12.5px; margin-top:2px; cursor:help; }
   .badge{
     display:inline-block; padding:4px 12px; border-radius:999px;
     font-family:'Work Sans'; font-size:12px; font-weight:600; text-transform:none;
@@ -131,6 +132,11 @@
 
   .country-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   @media (max-width:480px){ .country-grid{grid-template-columns:1fr;} }
+
+  .progression-chart{ width:100%; height:90px; display:block; }
+  .progression-area{ fill:rgba(47,111,237,0.18); stroke:none; }
+  .progression-line{ fill:none; stroke:var(--blue-soft); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .progression-dot{ fill:var(--red); }
 
   .action-layout{ display:flex; flex-direction:column; }
   @media (min-width:900px){
@@ -338,6 +344,19 @@ function renewContract(player) {
 // Un mini-classement fictif (5-6 équipes) généré chaque saison au sommet : les autres
 // équipes évoluent aléatoirement, la tienne est légèrement influencée par ta performance.
 
+// Force de fond d'une équipe, mémorisée d'une saison à l'autre plutôt que retirée
+// indépendamment à chaque fois : une équipe forte le reste globalement, avec une
+// dérive lente (progression ou déclin progressif) plutôt qu'un effondrement sans raison.
+function getTeamStrength(player, team) {
+  if (!player.teamStrengths) player.teamStrengths = {};
+  if (player.teamStrengths[team] === undefined) {
+    player.teamStrengths[team] = rnd(35, 65);
+  } else {
+    player.teamStrengths[team] = clamp(player.teamStrengths[team] + rnd(-6, 6), 20, 95);
+  }
+  return player.teamStrengths[team];
+}
+
 function generateStandings(player, perf) {
   const c = COUNTRIES[player.country];
   const otherTeams = c.teams.filter((t) => t !== player.team);
@@ -351,7 +370,7 @@ function generateStandings(player, perf) {
   const ownWins = clamp(Math.round(50 + (perf - 50) * 0.8 + rnd(-6, 6)), 20, 100);
   const table = [
     { team: player.team, wins: ownWins },
-    ...sample.map((t) => ({ team: t, wins: clamp(Math.round(50 + rnd(-22, 22)), 15, 100) })),
+    ...sample.map((t) => ({ team: t, wins: clamp(Math.round(getTeamStrength(player, t) + rnd(-10, 10)), 15, 100) })),
   ];
   table.sort((a, b) => b.wins - a.wins);
   return table;
@@ -484,7 +503,7 @@ function fatigueFromChoice(diffsSum, healthDelta) {
 }
 
 function applyFatigueRecovery(player) {
-  player.fatigue = clamp(Math.round((player.fatigue || 0) * 0.45), 0, 100);
+  player.fatigue = clamp(Math.round((player.fatigue || 0) * (player.earlyRiser ? 0.3 : 0.45)), 0, 100);
 }
 
 // ---------- Blessures à sévérité graduée ----------
@@ -519,7 +538,8 @@ const CAREER_ENDING_MESSAGES = {
 function checkRandomInjury(player) {
   const fatigue = player.fatigue || 0;
   const chronicBoost = player.chronicIssue ? 0.04 : 0;
-  const chance = 0.06 + fatigue / 250 + chronicBoost;
+  const fragileBoost = player.fragile ? 0.05 : 0;
+  const chance = 0.06 + fatigue / 250 + chronicBoost + fragileBoost;
   if (Math.random() >= chance) return null;
   const roll = Math.random();
   let acc = 0, chosen = INJURY_TIERS[0];
@@ -806,11 +826,66 @@ const COUNTRIES = {
 
 const POSITIONS = ["Lanceur", "Receveur", "Arrêt-court"];
 
+// ---------- Traits de personnage ----------
+// Un trait tiré aléatoirement à la création, avec un effet mécanique réel (pas
+// que cosmétique) qui infléchit légèrement la façon de jouer la carrière.
+const TRAITS = [
+  {
+    id: "prodigy", icon: "🌟", label: "Prodige",
+    desc: "Stats de départ plus hautes, mais la pression monte plus vite si les résultats ne suivent pas.",
+    apply: (p) => { for (const k in p.stats) p.stats[k] = clamp(p.stats[k] + 6, 1, 99); p.reputation = clamp(p.reputation + 10, 0, 100); },
+  },
+  {
+    id: "fragile", icon: "🩹", label: "Corps fragile",
+    desc: "Plus sujet aux blessures tout au long de la carrière.",
+    apply: (p) => { p.fragile = true; },
+  },
+  {
+    id: "clutch", icon: "🔥", label: "Joueur clutch",
+    desc: "Bien plus solide dans les moments décisifs, quitte à jouer avec le feu.",
+    apply: (p) => { p.clutch = true; },
+  },
+  {
+    id: "early_riser", icon: "🌅", label: "Lève-tôt",
+    desc: "Récupère plus vite de la fatigue accumulée d'une saison à l'autre.",
+    apply: (p) => { p.earlyRiser = true; },
+  },
+  {
+    id: "fan_favorite", icon: "❤️", label: "Chouchou du public",
+    desc: "Le moral se maintient plus facilement grâce au soutien des supporters.",
+    apply: (p) => { p.fanFavorite = true; },
+  },
+];
+const TRAIT_I18N = {
+  en: {
+    "Prodige": { label: "Prodigy", desc: "Higher starting stats, but pressure builds faster if results don't follow." },
+    "Corps fragile": { label: "Fragile body", desc: "More prone to injuries throughout the career." },
+    "Joueur clutch": { label: "Clutch player", desc: "Far steadier in decisive moments, at the cost of playing with fire." },
+    "Lève-tôt": { label: "Early riser", desc: "Recovers from accumulated fatigue faster from one season to the next." },
+    "Chouchou du public": { label: "Fan favorite", desc: "Morale holds up more easily thanks to fan support." },
+  },
+  es: {
+    "Prodige": { label: "Prodigio", desc: "Estadísticas iniciales más altas, pero la presión sube más rápido si los resultados no acompañan." },
+    "Corps fragile": { label: "Cuerpo frágil", desc: "Más propenso a las lesiones durante toda la carrera." },
+    "Joueur clutch": { label: "Jugador clutch", desc: "Mucho más sólido en los momentos decisivos, a riesgo de jugar con fuego." },
+    "Lève-tôt": { label: "Madrugador", desc: "Se recupera más rápido de la fatiga acumulada de una temporada a otra." },
+    "Chouchou du public": { label: "Favorito del público", desc: "El ánimo se mantiene más fácilmente gracias al apoyo de la afición." },
+  },
+};
+function traitText(label) {
+  if (STATE.lang === "fr" || !label) return { label, desc: (TRAITS.find(t => t.label === label) || {}).desc };
+  const tr = (TRAIT_I18N[STATE.lang] || {})[label];
+  const base = TRAITS.find(t => t.label === label) || {};
+  return tr || { label, desc: base.desc };
+}
+
 // ---------- Création du joueur ----------
 
 function createPlayer(countryKey, position, name) {
   const country = COUNTRIES[countryKey];
   const isPitcher = position === "Lanceur";
+  const isCatcher = position === "Receveur";
+  const isShortstop = position === "Arrêt-court";
   const player = {
     name: name || randomName(countryKey),
     country: countryKey,
@@ -827,6 +902,9 @@ function createPlayer(countryKey, position, name) {
     salary: 0,
     contractYearsLeft: 0,
     seasonsSinceTransferEvent: 0,
+    seasonsSinceIntlTransferEvent: 0,
+    teamStrengths: {},
+    seasonHistory: [],
     fatigue: 0,
     rivals: [],
     rivalWins: 0,
@@ -842,9 +920,11 @@ function createPlayer(countryKey, position, name) {
     stats: {
       contact: rnd(30, 55),
       power: rnd(30, 55),
-      speed: rnd(30, 55),
-      defense: rnd(30, 55),
-      control: isPitcher ? rnd(35, 60) : rnd(20, 40),
+      // Profils de départ archétypaux : le Receveur démarre plus solide défensivement
+      // mais moins véloce, l'Arrêt-court est plus athlétique/rapide dès le départ.
+      speed: clamp(rnd(30, 55) + (isCatcher ? -5 : isShortstop ? 5 : 0), 1, 99),
+      defense: clamp(rnd(30, 55) + (isCatcher ? 5 : 0), 1, 99),
+      control: isPitcher ? rnd(35, 60) : clamp(rnd(20, 40) + (isCatcher ? 5 : 0), 1, 99),
     },
     morale: 70,
     health: 100,
@@ -853,17 +933,29 @@ function createPlayer(countryKey, position, name) {
     trophies: [],
     history: [], // journal de carrière
     isPitcher,
+    isCatcher,
+    isShortstop,
     draftInfo: null,
+    trait: null,
   };
   player.rivals = generateRivals(player);
+  const trait = pick(TRAITS);
+  trait.apply(player);
+  player.trait = trait.label;
+  log(player, `Trait de carrière : ${trait.label}.`);
   return player;
 }
 
 function overall(player) {
   const s = player.stats;
-  const base = player.isPitcher
-    ? (s.control * 0.45 + s.defense * 0.2 + s.speed * 0.1 + s.power * 0.1 + s.contact * 0.15)
-    : (s.contact * 0.3 + s.power * 0.25 + s.speed * 0.2 + s.defense * 0.2 + s.control * 0.05);
+  // Chaque poste valorise différemment les 5 stats : le Receveur profite d'un profil
+  // défense/instinct fort mais peu véloce, l'Arrêt-court d'un profil athlétique où la
+  // vitesse compte presque autant que le contact — plutôt qu'une formule identique.
+  let base;
+  if (player.isPitcher) base = s.control * 0.45 + s.defense * 0.2 + s.speed * 0.1 + s.power * 0.1 + s.contact * 0.15;
+  else if (player.isCatcher) base = s.contact * 0.28 + s.power * 0.2 + s.speed * 0.07 + s.defense * 0.3 + s.control * 0.15;
+  else if (player.isShortstop) base = s.contact * 0.28 + s.power * 0.18 + s.speed * 0.28 + s.defense * 0.21 + s.control * 0.05;
+  else base = s.contact * 0.3 + s.power * 0.25 + s.speed * 0.2 + s.defense * 0.2 + s.control * 0.05;
   return clamp(Math.round(base), 1, 99);
 }
 
@@ -1224,6 +1316,8 @@ function allSeasonEventGenerators(player) {
 
   // --- Pool générique (toutes ligues) ---
   gens.push({
+    // Plus la fatigue est déjà élevée, plus une alerte physique devient probable.
+    contextWeight: (p) => 1 + (p.fatigue || 0) / 40,
     build: () => ({
       id: "injury",
       title: "Petite douleur en fin de saison",
@@ -1235,6 +1329,8 @@ function allSeasonEventGenerators(player) {
   });
 
   gens.push({
+    // Plus la réputation est basse, plus une occasion de se faire connaître compte.
+    contextWeight: (p) => p.reputation < 40 ? 1.8 : 1,
     build: () => ({
       id: "media",
       title: "Sollicitation médiatique",
@@ -1246,6 +1342,8 @@ function allSeasonEventGenerators(player) {
   });
 
   gens.push({
+    // Un vestiaire déjà tendu (moral bas) est plus propice aux frictions.
+    contextWeight: (p) => p.morale < 45 ? 1.8 : 1,
     build: () => ({
       id: "locker",
       title: "Ambiance dans le vestiaire",
@@ -1546,6 +1644,8 @@ function allSeasonEventGenerators(player) {
   if ((player.country === "japan" || player.country === "kr") && player.yearsInTop >= 7) {
     gens.push({
       transferType: true,
+      internationalTransferType: true,
+      weight: 2,
       build: () => ({
         id: "posting",
         title: "Système de posting vers la SSL",
@@ -1567,6 +1667,8 @@ function allSeasonEventGenerators(player) {
   if (player.country === "mx" && player.inTopLeague) {
     gens.push({
       transferType: true,
+      internationalTransferType: true,
+      weight: 2,
       build: () => ({
         id: "sale_abroad",
         title: "Intérêt d'une organisation SSL",
@@ -2802,7 +2904,13 @@ function seasonEventPool(player) {
   // Échantillonnage pondéré sans remise : les événements avec un poids plus élevé
   // (ex. contrats/transferts) reviennent plus souvent, sans jamais doublonner
   // dans la même saison (chaque générateur n'apparaît qu'une fois dans le pool).
-  const withKeys = optional.map(g => ({ g, key: Math.pow(rndFloat(), 1 / (g.weight || 1)) }));
+  const withKeys = optional.map(g => {
+    // Poids contextuel optionnel : certains events deviennent plus probables selon
+    // l'état du joueur (fatigue, moral, réputation...) pour que le jeu semble réagir
+    // à sa situation plutôt que de piocher uniformément.
+    const ctx = g.contextWeight ? clamp(g.contextWeight(player), 0.2, 5) : 1;
+    return { g, key: Math.pow(rndFloat(), 1 / ((g.weight || 1) * ctx)) };
+  });
   withKeys.sort((a, b) => b.key - a.key);
   const targetTotal = rnd(3, 4);
   const extraCount = clamp(targetTotal - always.length, 1, withKeys.length);
@@ -2817,6 +2925,20 @@ function seasonEventPool(player) {
     chosenOptional[chosenOptional.length - 1] = pick(transferCandidates);
   }
   player.seasonsSinceTransferEvent = chosenOptional.some(g => g.transferType) ? 0 : seasonsWithout + 1;
+
+  // Garantie dédiée aux opportunités internationales (posting / vente à l'étranger) :
+  // les transferts domestiques (fréquents, poids 2.5) réinitialisaient le compteur
+  // ci-dessus avant que le posting n'ait la moindre chance d'être forcé. On isole donc
+  // un compteur propre à ces occasions rares mais marquantes, garanties dans les 2
+  // saisons suivant l'éligibilité (ex: 7 saisons au sommet pour le Japon/la Corée).
+  const intlCandidates = optional.filter(g => g.internationalTransferType);
+  const seasonsWithoutIntl = player.seasonsSinceIntlTransferEvent || 0;
+  const alreadyHasIntl = chosenOptional.some(g => g.internationalTransferType);
+  if (!alreadyHasIntl && seasonsWithoutIntl >= 2 && intlCandidates.length) {
+    const replaceIdx = chosenOptional.findIndex(g => !g.transferType);
+    chosenOptional[replaceIdx >= 0 ? replaceIdx : chosenOptional.length - 1] = pick(intlCandidates);
+  }
+  player.seasonsSinceIntlTransferEvent = chosenOptional.some(g => g.internationalTransferType) ? 0 : (intlCandidates.length ? seasonsWithoutIntl + 1 : seasonsWithoutIntl);
 
   const chosen = [...always, ...chosenOptional];
 
@@ -2835,13 +2957,35 @@ function seasonEventPool(player) {
           sub: "Effet aléatoire fort, quitte ou double",
           result: "Tu tentes un geste totalement fou, sous les yeux ébahis du stade — pile ou face absolu.",
           apply: (p) => {
-            const swing = rnd(-8, 14);
+            // Un joueur clutch encaisse mieux le quitte ou double : le pire est moins pire,
+            // le meilleur est meilleur, et le coup a plus de chances de payer.
+            const swing = p.clutch ? rnd(-3, 18) : rnd(-8, 14);
             p.stats[key] = clamp((p.stats[key] || 0) + swing, 1, 99);
             p.health -= rnd(0, 6);
-            if (Math.random() < 0.3) { p.reputation += rnd(5, 10); log(p, "Le coup fou paie, la foule est en délire !"); }
+            if (Math.random() < (p.clutch ? 0.5 : 0.3)) { p.reputation += rnd(5, 10); log(p, "Le coup fou paie, la foule est en délire !"); }
           },
         }]);
       }
+    } else if (ev.category === "carrière" && Math.random() < 0.2 && ev.choices.length === 2) {
+      // Option à risque caché : contrairement aux autres choix, sa fourchette n'est pas
+      // annoncée à l'avance — seule l'incertitude l'est, pour de vraies décisions à l'aveugle.
+      ev.choices = ev.choices.concat([{
+        label: "Tenter le coup de poker, sans filet",
+        sub: "Conséquence incertaine, à double tranchant",
+        result: "Tu joues le tout pour le tout, sans vraiment savoir ce que ça va donner.",
+        apply: (p) => {
+          const success = Math.random() < (p.clutch ? 0.55 : 0.4);
+          if (success) {
+            p.reputation = clamp(p.reputation + rnd(6, 14), 0, 100);
+            p.salary = Math.round(p.salary * (1 + rnd(2, 8) / 100));
+            log(p, "Le pari risqué paie largement !");
+          } else {
+            p.reputation = clamp(p.reputation - rnd(4, 10), 0, 100);
+            p.morale = clamp(p.morale - rnd(2, 6), 0, 100);
+            log(p, "Le pari risqué se retourne contre toi.");
+          }
+        },
+      }]);
     }
     return ev;
   });
@@ -3021,6 +3165,7 @@ const TUTORIAL_TXT = {
     title: "COMMENT JOUER",
     sections: [
       { h: "Le principe", b: "Tu incarnes un jeune joueur de baseball, de 16 ans jusqu'à la retraite. Chaque saison, tu fais des choix qui influencent tes statistiques, ton moral, ta santé et ta réputation. Aucun choix n'affiche ses conséquences à l'avance — tu les découvres juste après." },
+      { h: "Ton trait de carrière", b: "Chaque nouveau joueur reçoit un trait tiré au hasard (Prodige, Corps fragile, Joueur clutch, Lève-tôt, Chouchou du public...) avec un vrai effet mécanique sur toute la carrière. Il est affiché sous ton nom — survole-le pour voir son effet." },
       { h: "Les statistiques", b: "👁️ Contact, 💥 Puissance, ⚡ Vitesse, 🛡️ Défense, 🎯 Contrôle (lanceurs) déterminent ta valeur globale. 😊 Moral, ❤️ Santé et ⭐ Réputation évoluent au fil des événements et influencent tes performances." },
       { h: "Les événements", b: "3 à 4 par saison, tirés parmi plus de 80 : 💼 carrière (entraînement, contrat, transferts...), 🏟️ en plein match (moments décisifs), 🏠 vie personnelle. Certains sont propres à ton poste." },
       { h: "Contrat & salaire", b: "Dès ta signature, tu as un salaire et un contrat avec une durée. Il se renouvelle automatiquement à échéance, en fonction de tes performances." },
@@ -3033,6 +3178,7 @@ const TUTORIAL_TXT = {
     title: "HOW TO PLAY",
     sections: [
       { h: "The concept", b: "You play a young baseball player, from age 16 to retirement. Each season, you make choices that affect your stats, morale, health, and reputation. No choice shows its consequences in advance — you find out right after." },
+      { h: "Your career trait", b: "Every new player gets a random trait (Prodigy, Fragile body, Clutch player, Early riser, Fan favorite...) with a real mechanical effect across the whole career. It's shown under your name — hover it to see its effect." },
       { h: "Stats", b: "👁️ Contact, 💥 Power, ⚡ Speed, 🛡️ Defense, 🎯 Control (pitchers) determine your overall value. 😊 Morale, ❤️ Health, and ⭐ Reputation shift with events and affect your performance." },
       { h: "Events", b: "3 to 4 per season, drawn from a pool of 80+: 💼 career (training, contracts, trades...), 🏟️ in the game (decisive moments), 🏠 personal life. Some are specific to your position." },
       { h: "Contract & salary", b: "From the moment you sign, you have a salary and a contract with a set length. It renews automatically when it expires, based on your performance." },
@@ -3045,6 +3191,7 @@ const TUTORIAL_TXT = {
     title: "CÓMO JUGAR",
     sections: [
       { h: "El concepto", b: "Encarnas a un joven jugador de béisbol, desde los 16 años hasta el retiro. Cada temporada, tomas decisiones que afectan tus estadísticas, tu moral, tu salud y tu reputación. Ninguna decisión muestra sus consecuencias de antemano — las descubres justo después." },
+      { h: "Tu rasgo de carrera", b: "Cada nuevo jugador recibe un rasgo aleatorio (Prodigio, Cuerpo frágil, Jugador clutch, Madrugador, Favorito del público...) con un efecto mecánico real durante toda la carrera. Se muestra bajo tu nombre — pasa el cursor para ver su efecto." },
       { h: "Las estadísticas", b: "👁️ Contacto, 💥 Potencia, ⚡ Velocidad, 🛡️ Defensa, 🎯 Control (lanzadores) determinan tu valor global. 😊 Moral, ❤️ Salud y ⭐ Reputación evolucionan con los eventos y afectan tu rendimiento." },
       { h: "Los eventos", b: "De 3 a 4 por temporada, entre más de 80: 💼 carrera (entrenamiento, contrato, traspasos...), 🏟️ en pleno partido (momentos decisivos), 🏠 vida personal. Algunos son propios de tu posición." },
       { h: "Contrato y salario", b: "Desde tu firma, tienes un salario y un contrato con una duración. Se renueva automáticamente al vencer, según tu rendimiento." },
@@ -3060,7 +3207,7 @@ const UI_TXT = {
     intro: "Choisis ton pays et ton poste. De tes 16 ans jusqu'à la retraite, écris ta légende du baseball saison après saison — drafts, transferts, blessures, trophées.",
     choosePosition: "1. Choisis ton poste", chooseCountry: "2. Choisis ton pays",
     choosePrompt: "Choisis un pays et un poste", start: "Commencer —",
-    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", moraleLabel: "Moral", healthLabel: "Santé", reputationLabel: "Réputation", scoreLabel: "Score", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
+    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", moraleLabel: "Moral", healthLabel: "Santé", reputationLabel: "Réputation", scoreLabel: "Score", progressionTitle: "Progression de la carrière", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
     howStart: (top) => `Comment démarres-tu ta route vers le ${top} ?`,
     result: "Résultat", consequences: "Conséquences", startSeason: "Débuter la saison",
     eventCounter: (icon, i, n, year) => `${icon} Événement ${i} / ${n} — Saison ${year}`,
@@ -3096,7 +3243,7 @@ const UI_TXT = {
     intro: "Choose your country and position. From age 16 to retirement, write your baseball legend season by season — drafts, trades, injuries, trophies.",
     choosePosition: "1. Choose your position", chooseCountry: "2. Choose your country",
     choosePrompt: "Choose a country and a position", start: "Start —",
-    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", moraleLabel: "Morale", healthLabel: "Health", reputationLabel: "Reputation", scoreLabel: "Score", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
+    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", moraleLabel: "Morale", healthLabel: "Health", reputationLabel: "Reputation", scoreLabel: "Score", progressionTitle: "Career progression", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
     howStart: (top) => `How do you start your road to the ${top}?`,
     result: "Result", consequences: "Consequences", startSeason: "Start the season",
     eventCounter: (icon, i, n, year) => `${icon} Event ${i} / ${n} — Season ${year}`,
@@ -3132,7 +3279,7 @@ const UI_TXT = {
     intro: "Elige tu país y tu posición. Desde tus 16 años hasta el retiro, escribe tu leyenda del béisbol temporada tras temporada — drafts, traspasos, lesiones, trofeos.",
     choosePosition: "1. Elige tu posición", chooseCountry: "2. Elige tu país",
     choosePrompt: "Elige un país y una posición", start: "Empezar —",
-    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", moraleLabel: "Moral", healthLabel: "Salud", reputationLabel: "Reputación", scoreLabel: "Puntuación", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
+    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", moraleLabel: "Moral", healthLabel: "Salud", reputationLabel: "Reputación", scoreLabel: "Puntuación", progressionTitle: "Progresión de la carrera", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
     howStart: (top) => `¿Cómo empiezas tu camino hacia la ${top}?`,
     result: "Resultado", consequences: "Consecuencias", startSeason: "Comenzar la temporada",
     eventCounter: (icon, i, n, year) => `${icon} Evento ${i} / ${n} — Temporada ${year}`,
@@ -3647,6 +3794,32 @@ function logoSvg(size) {
   </svg>`;
 }
 
+// ---------- Courbe de progression (score de carrière saison par saison) ----------
+
+function progressionChartSvg(seasonHistory) {
+  const w = 300, h = 90, pad = 6;
+  const pts = seasonHistory.map(s => s.points);
+  const maxPoints = Math.max(1, ...pts);
+  const minPoints = Math.min(0, ...pts);
+  const range = Math.max(1, maxPoints - minPoints);
+  const stepX = seasonHistory.length > 1 ? (w - pad * 2) / (seasonHistory.length - 1) : 0;
+  const coords = seasonHistory.map((s, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - ((s.points - minPoints) / range) * (h - pad * 2);
+    return [x, y];
+  });
+  const pointsAttr = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaAttr = `${pad},${(h - pad).toFixed(1)} ${pointsAttr} ${(w - pad).toFixed(1)},${(h - pad).toFixed(1)}`;
+  const dots = coords.map(([x, y], i) =>
+    `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${i === coords.length - 1 ? 3 : 1.5}" class="progression-dot"/>`
+  ).join("");
+  return `<svg viewBox="0 0 ${w} ${h}" class="progression-chart" role="img" aria-label="${T("progressionTitle")}">
+    <polygon points="${areaAttr}" class="progression-area"/>
+    <polyline points="${pointsAttr}" class="progression-line"/>
+    ${dots}
+  </svg>`;
+}
+
 // ---------- Stockage persistant (récompenses + historique des carrières) ----------
 // Essaie d'abord l'API window.storage (aperçu d'artifact Claude), puis localStorage
 // (fichier ouvert directement dans un navigateur), puis un repli en mémoire.
@@ -3748,13 +3921,13 @@ const DAILY_CHALLENGE_POOL = [
   { id: "dc_play", icon: "▶️", label: "Termine une carrière aujourd'hui", check: s => true },
   { id: "dc_points150", icon: "💯", label: "Termine une carrière avec 150 points ou plus", check: s => s.points >= 150 },
   { id: "dc_trophy", icon: "🏆", label: "Décroche au moins un trophée", check: s => s.trophyCount >= 1 },
-  { id: "dc_pitcher", icon: "⚾", label: "Joue une carrière avec un Lanceur", check: s => s.position === "Lanceur" },
-  { id: "dc_catcher", icon: "🧤", label: "Joue une carrière avec un Receveur", check: s => s.position === "Receveur" },
-  { id: "dc_shortstop", icon: "🛡️", label: "Joue une carrière avec un Arrêt-court", check: s => s.position === "Arrêt-court" },
-  { id: "dc_usa", icon: "🇺🇸", label: "Termine une carrière commencée aux États-Unis", check: s => s.startCountry === "usa" },
-  { id: "dc_japan", icon: "🇯🇵", label: "Termine une carrière commencée au Japon", check: s => s.startCountry === "japan" },
-  { id: "dc_kr", icon: "🇰🇷", label: "Termine une carrière commencée en Corée du Sud", check: s => s.startCountry === "kr" },
-  { id: "dc_mx", icon: "🇲🇽", label: "Termine une carrière commencée au Mexique", check: s => s.startCountry === "mx" },
+  { id: "dc_pitcher", icon: "⚾", label: "Joue une carrière avec un Lanceur", check: s => s.position === "Lanceur", discoverPosition: "Lanceur" },
+  { id: "dc_catcher", icon: "🧤", label: "Joue une carrière avec un Receveur", check: s => s.position === "Receveur", discoverPosition: "Receveur" },
+  { id: "dc_shortstop", icon: "🛡️", label: "Joue une carrière avec un Arrêt-court", check: s => s.position === "Arrêt-court", discoverPosition: "Arrêt-court" },
+  { id: "dc_usa", icon: "🇺🇸", label: "Termine une carrière commencée aux États-Unis", check: s => s.startCountry === "usa", discoverCountry: "usa" },
+  { id: "dc_japan", icon: "🇯🇵", label: "Termine une carrière commencée au Japon", check: s => s.startCountry === "japan", discoverCountry: "japan" },
+  { id: "dc_kr", icon: "🇰🇷", label: "Termine une carrière commencée en Corée du Sud", check: s => s.startCountry === "kr", discoverCountry: "kr" },
+  { id: "dc_mx", icon: "🇲🇽", label: "Termine une carrière commencée au Mexique", check: s => s.startCountry === "mx", discoverCountry: "mx" },
   { id: "dc_veteran", icon: "📆", label: "Termine une carrière avec 10 saisons ou plus au sommet", check: s => s.yearsInTop >= 10 },
   { id: "dc_champion", icon: "🥇", label: "Remporte un championnat", check: s => s.championshipsWon >= 1 },
   { id: "dc_star", icon: "🌟", label: "Termine avec le niveau Superstar ou mieux", check: s => s.tier.includes("Superstar") || s.tier.includes("Légende") },
@@ -3774,11 +3947,22 @@ async function ensureDailyChallenges() {
     if (raw) state = JSON.parse(raw);
   } catch (e) { /* on régénère ci-dessous */ }
   if (!state || state.date !== today) {
-    const pool = DAILY_CHALLENGE_POOL.slice();
-    const picked = [];
-    while (picked.length < 3 && pool.length) {
-      picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
-    }
+    // Tirage pondéré : les défis portant sur un pays ou un poste jamais essayé
+    // reviennent plus souvent, pour pousser à la découverte plutôt qu'à répéter
+    // toujours les mêmes carrières. Les autres défis gardent un poids normal.
+    let achMeta = null;
+    try { achMeta = (await loadAchState()).meta; } catch (e) { /* repli ci-dessous */ }
+    const countriesPlayed = (achMeta && achMeta.countriesPlayed) || [];
+    const positionsPlayed = (achMeta && achMeta.positionsPlayed) || [];
+    const DISCOVERY_WEIGHT = 4;
+    const withKeys = DAILY_CHALLENGE_POOL.map(c => {
+      const isUndiscoveredCountry = c.discoverCountry && !countriesPlayed.includes(c.discoverCountry);
+      const isUndiscoveredPosition = c.discoverPosition && !positionsPlayed.includes(c.discoverPosition);
+      const weight = (isUndiscoveredCountry || isUndiscoveredPosition) ? DISCOVERY_WEIGHT : 1;
+      return { c, key: Math.pow(Math.random(), 1 / weight) };
+    });
+    withKeys.sort((a, b) => b.key - a.key);
+    const picked = withKeys.slice(0, 3).map(x => x.c.id);
     state = { date: today, challengeIds: picked, completed: {} };
     await Store.set("daily-challenges", JSON.stringify(state));
   }
@@ -4366,6 +4550,8 @@ function finalizeSeason() {
   const statLine = generateStatLine(p, perf);
   const seasonLine = { year: p.year, age: p.age, team: p.team, level: p.inTopLeague ? c.topLevel : c.minorLevels[p.level], perf, ov, statLine };
   p.lastSeasonLine = seasonLine;
+  if (!p.seasonHistory) p.seasonHistory = [];
+  p.seasonHistory.push({ year: p.year, age: p.age, ov, perf, points: p.careerPoints || 0 });
   if (p.inTopLeague) {
     accumulateCareerStats(p, statLine);
     p.leagueStandings = generateStandings(p, perf);
@@ -4403,6 +4589,7 @@ function finalizeSeason() {
   if (injury) STATE.injuryThisSeason = injury;
   applyFatigueRecovery(p);
   p.health = clamp(p.health + rnd(2, 8), 40, 100);
+  if (p.fanFavorite) p.morale = clamp(p.morale + rnd(3, 6), 0, 100);
   clampStats(p);
   if (p.team) { ensureTeammate(p); ensureClubRival(p); }
 
@@ -4603,6 +4790,18 @@ function renderReport() {
     el("div", { class: "tier-tag", style: "margin-top:6px;" }, tierName(report.tier)),
     el("p", { class: "muted", style: "margin-top:8px;" }, `${POSITION_ICONS[p.position] || ""} ${p.name} · ${posName(p.position)} · ${report.yearsInTop} ${T("seasonsAtTop", report.yearsInTop, c.topLevel)} · ${T("lastClub")} ${report.finalTeam} ${COUNTRIES[report.finalCountry].flag}`),
   ]));
+
+  if (p.seasonHistory && p.seasonHistory.length >= 2) {
+    const ageWord = STATE.lang === "en" ? "yo" : STATE.lang === "es" ? "años" : "ans";
+    wrap.appendChild(el("div", { class: "card" }, [
+      el("div", { class: "section-label" }, T("progressionTitle")),
+      el("div", { html: progressionChartSvg(p.seasonHistory) }),
+      el("div", { class: "muted", style: "display:flex; justify-content:space-between; margin-top:2px; font-size:11px;" }, [
+        el("span", {}, `${p.seasonHistory[0].age} ${ageWord}`),
+        el("span", {}, `${p.seasonHistory[p.seasonHistory.length - 1].age} ${ageWord}`),
+      ]),
+    ]));
+  }
 
   if (STATE.dailyNewlyCompleted && STATE.dailyNewlyCompleted.length) {
     wrap.appendChild(el("div", { class: "card unlock-banner" }, [
@@ -4876,6 +5075,13 @@ function renderScoreboard(p, opts = {}) {
       el("div", {}, [
         el("div", { class: "player-name" }, p.name),
         el("div", { class: "player-sub" }, `${POSITION_ICONS[p.position] || ""} ${posName(p.position)} · ${p.age} ${ageWord}`),
+        p.trait ? (() => {
+          const tt = traitText(p.trait);
+          const traitIcon = (TRAITS.find(t => t.label === p.trait) || {}).icon || "🎯";
+          return el("div", { class: "player-sub trait-tag", title: tt.desc || "" }, [
+            el("span", { "aria-hidden": "true" }, `${traitIcon} `), tt.label,
+          ]);
+        })() : null,
       ]),
       el("div", { style: "text-align:right;" }, [
         opts.hideTeam ? el("span", { class: "badge" }, T("freeAgent")) : el("span", { class: "badge" }, p.team || "—"),
