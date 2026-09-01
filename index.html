@@ -17,6 +17,8 @@
   :root{
     --navy:#0F2C63;
     --navy-deep:#081A3D;
+    --stat-mid:#F2B84B;
+    --stat-high:#5FE28E;
     --blue:#2F6FED;
     --blue-soft:#5B8DF6;
     --white:#FFFFFF;
@@ -93,9 +95,10 @@
   .stat{ text-align:center; }
   .stat .val{ font-family:'Teko'; font-size:28px; color:var(--chalk); line-height:1;}
   .stat .bar{ height:6px; border-radius:999px; background:rgba(255,255,255,0.12); margin:5px 0 4px; overflow:hidden;}
-  .stat .bar > div{ height:100%; background:linear-gradient(90deg, var(--blue), var(--red)); border-radius:999px; }
+  .stat .bar > div{ height:100%; background:var(--stat-color, var(--blue)); border-radius:999px; }
   .stat .lbl{ font-size:10px; text-transform:uppercase; letter-spacing:0.03em; opacity:0.7; white-space:nowrap; }
   .vitals{ display:flex; gap:14px; margin-top:12px; font-size:13px; flex-wrap:wrap;}
+  .vitals-legend{ font-size:10.5px; color:rgba(244,247,251,0.55); margin-top:4px; line-height:1.5; }
   .vitals span b{ color:var(--blue-soft); font-weight:600; }
 
   .card{
@@ -128,6 +131,13 @@
 
   .country-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   @media (max-width:480px){ .country-grid{grid-template-columns:1fr;} }
+
+  .action-layout{ display:flex; flex-direction:column; }
+  @media (min-width:900px){
+    #app{ max-width:960px; }
+    .action-layout{ display:grid; grid-template-columns: 380px 1fr; align-items:start; gap:18px; }
+    .action-layout .scoreboard{ margin-bottom:0; position:sticky; top:18px; }
+  }
   .country-card{
     border:1px solid var(--line); border-radius:18px; padding:16px;
     background:rgba(255,255,255,0.04); cursor:pointer; transition:.12s;
@@ -144,12 +154,15 @@
   .lang-btn{ background:rgba(255,255,255,0.06); border:1px solid var(--line); color:var(--chalk); border-radius:999px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Work Sans'; }
   .lang-btn.selected{ background:var(--blue); border-color:var(--blue); color:var(--white); }
 
-  .pos-pill-row{ display:flex; flex-wrap:wrap; gap:8px; }
-  .pos-pill{
-    padding:8px 14px; border-radius:999px; border:1px solid var(--line);
-    background:rgba(255,255,255,0.04); font-size:13.5px; cursor:pointer; font-family:'Work Sans'; font-weight:600;
+  .pos-card-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  @media (max-width:600px){ .pos-card-grid{ grid-template-columns:1fr; } }
+  .pos-card{
+    padding:12px 14px; border-radius:16px; border:1px solid var(--line);
+    background:rgba(255,255,255,0.04); cursor:pointer; font-family:'Work Sans'; text-align:left;
   }
-  .pos-pill.selected{ border-color:var(--red); color:var(--white); background:var(--red); }
+  .pos-card .pos-card-title{ font-weight:700; font-size:14.5px; color:var(--chalk); }
+  .pos-card .pos-card-desc{ font-size:12px; opacity:0.75; line-height:1.4; margin-top:3px; }
+  .pos-card.selected{ border-color:var(--red); background:rgba(230,57,70,0.14); }
 
   .primary-btn{
     background:linear-gradient(90deg, var(--red), var(--red-deep)); color:var(--white); border:none; border-radius:16px;
@@ -204,6 +217,7 @@
   .history-rank{ font-size:20px; width:28px; text-align:center; flex-shrink:0; }
   .history-main{ flex:1; min-width:0; }
   .history-name{ font-family:'Work Sans'; font-weight:600; font-size:14px; color:var(--chalk); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .history-name.wrap-text{ white-space:normal; overflow:visible; text-overflow:clip; line-height:1.35; }
   .history-sub{ font-family:'Work Sans'; font-size:12px; opacity:0.7; margin-top:1px; }
   .history-points{ font-family:'Teko'; font-size:22px; color:var(--red); flex-shrink:0; }  #splash-screen{
     position:fixed; inset:0; z-index:9999;
@@ -3046,7 +3060,7 @@ const UI_TXT = {
     intro: "Choisis ton pays et ton poste. De tes 16 ans jusqu'à la retraite, écris ta légende du baseball saison après saison — drafts, transferts, blessures, trophées.",
     choosePosition: "1. Choisis ton poste", chooseCountry: "2. Choisis ton pays",
     choosePrompt: "Choisis un pays et un poste", start: "Commencer —",
-    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
+    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", moraleLabel: "Moral", healthLabel: "Santé", reputationLabel: "Réputation", scoreLabel: "Score", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
     howStart: (top) => `Comment démarres-tu ta route vers le ${top} ?`,
     result: "Résultat", consequences: "Conséquences", startSeason: "Débuter la saison",
     eventCounter: (icon, i, n, year) => `${icon} Événement ${i} / ${n} — Saison ${year}`,
@@ -3082,7 +3096,7 @@ const UI_TXT = {
     intro: "Choose your country and position. From age 16 to retirement, write your baseball legend season by season — drafts, trades, injuries, trophies.",
     choosePosition: "1. Choose your position", chooseCountry: "2. Choose your country",
     choosePrompt: "Choose a country and a position", start: "Start —",
-    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
+    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", moraleLabel: "Morale", healthLabel: "Health", reputationLabel: "Reputation", scoreLabel: "Score", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
     howStart: (top) => `How do you start your road to the ${top}?`,
     result: "Result", consequences: "Consequences", startSeason: "Start the season",
     eventCounter: (icon, i, n, year) => `${icon} Event ${i} / ${n} — Season ${year}`,
@@ -3118,7 +3132,7 @@ const UI_TXT = {
     intro: "Elige tu país y tu posición. Desde tus 16 años hasta el retiro, escribe tu leyenda del béisbol temporada tras temporada — drafts, traspasos, lesiones, trofeos.",
     choosePosition: "1. Elige tu posición", chooseCountry: "2. Elige tu país",
     choosePrompt: "Elige un país y una posición", start: "Empezar —",
-    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
+    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", moraleLabel: "Moral", healthLabel: "Salud", reputationLabel: "Reputación", scoreLabel: "Puntuación", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
     howStart: (top) => `¿Cómo empiezas tu camino hacia la ${top}?`,
     result: "Resultado", consequences: "Consecuencias", startSeason: "Comenzar la temporada",
     eventCounter: (icon, i, n, year) => `${icon} Evento ${i} / ${n} — Temporada ${year}`,
@@ -3179,6 +3193,18 @@ const COUNTRY_DESC_I18N = {
     do: "Sin draft: firma libre en academias, un sistema conocido por sus entrenadores independientes (buscones).",
     cu: "Sin draft: asignación a un equipo provincial, un sistema centralizado único en su género.",
     tw: "Draft clásico de la FDL (instituto o universidad), orden inverso a la clasificación.",
+  },
+};
+const POSITION_DESC_I18N = {
+  en: {
+    "Lanceur": "Season stats: win-loss record, ERA, strikeouts. Key stat: Control.",
+    "Receveur": "Defensive anchor of every game. Season stats: batting average, home runs, RBI. Key stat: Fielding instinct.",
+    "Arrêt-court": "Key infield role, between offense and defense. Season stats: batting average, home runs, RBI. Key stat: Fielding instinct.",
+  },
+  es: {
+    "Lanceur": "Estadísticas de temporada: victorias-derrotas, efectividad, ponches. Estadística clave: Control.",
+    "Receveur": "Pilar defensivo de cada partido. Estadísticas de temporada: promedio de bateo, jonrones, carreras impulsadas. Estadística clave: Instinto defensivo.",
+    "Arrêt-court": "Puesto clave del cuadro interior, entre ataque y defensa. Estadísticas de temporada: promedio de bateo, jonrones, carreras impulsadas. Estadística clave: Instinto defensivo.",
   },
 };
 const TIER_I18N = {
@@ -3592,7 +3618,15 @@ function localizeEntryChoice(choice) {
   return Object.assign({}, choice, { label: tr.label, description: tr.description, result: tr.result || null });
 }
 
-let STATE = { screen: "home", lang: "fr", countryKey: null, position: null, player: null, pendingEvents: [], eventIndex: 0, lastResult: null };
+function getStoredLang() {
+  try {
+    const v = localStorage.getItem("diamond-destiny:lang");
+    if (v === "fr" || v === "en" || v === "es") return v;
+  } catch (e) { /* localStorage indisponible (ex: aperçu sandboxé) */ }
+  return "fr";
+}
+
+let STATE = { screen: "home", lang: getStoredLang(), countryKey: null, position: null, player: null, pendingEvents: [], eventIndex: 0, lastResult: null };
 
 const CATEGORY_LABELS = {
   "carrière": "💼",
@@ -3937,6 +3971,13 @@ const COUNTRY_DESCRIPTIONS = {
   tw: "Draft FDL classique (lycée ou université), ordre inversé au classement.",
 };
 
+const POSITION_DESCRIPTIONS = {
+  "Lanceur": "Stats de saison : victoires-défaites, moyenne de points mérités, retraits sur prises. Stat clé : Contrôle.",
+  "Receveur": "Pilier défensif de chaque match. Stats de saison : moyenne au bâton, circuits, points produits. Stat clé : Instinct défensif.",
+  "Arrêt-court": "Poste clé de l'infield, entre attaque et défense. Stats de saison : moyenne au bâton, circuits, points produits. Stat clé : Instinct défensif.",
+};
+function positionDescText(p) { return STATE.lang === "fr" ? POSITION_DESCRIPTIONS[p] : ((POSITION_DESC_I18N[STATE.lang] || {})[p] || POSITION_DESCRIPTIONS[p]); }
+
 const LEAGUE_FULL_NAME = {
   usa: "Stars & Strikes League (SSL)",
   japan: "Sakura Diamond League (SDL)",
@@ -3962,9 +4003,9 @@ function renderDailyChallengesCard() {
   return el("div", { class: "card" }, [
     el("div", { class: "section-label" }, `${T("dailyChallenges")} — ${doneCount} / ${defs.length}`),
     el("div", { class: "history-list" }, defs.map(d => el("div", { class: "history-row" + (state.completed[d.id] ? " medal" : "") }, [
-      el("div", { class: "history-rank" }, state.completed[d.id] ? "✅" : d.icon),
+      el("div", { class: "history-rank", "aria-hidden": "true" }, state.completed[d.id] ? "✅" : d.icon),
       el("div", { class: "history-main" }, [
-        el("div", { class: "history-name" }, dailyText(d.label)),
+        el("div", { class: "history-name wrap-text" }, dailyText(d.label)),
       ]),
     ]))),
   ]);
@@ -3974,9 +4015,9 @@ function renderHome() {
   const wrap = el("div");
 
   wrap.appendChild(el("div", { class: "lang-switch" }, [
-    el("button", { class: "lang-btn" + (STATE.lang === "fr" ? " selected" : ""), onclick: () => { STATE.lang = "fr"; render(); } }, "🇫🇷 FR"),
-    el("button", { class: "lang-btn" + (STATE.lang === "en" ? " selected" : ""), onclick: () => { STATE.lang = "en"; render(); } }, "🇺🇸 EN"),
-    el("button", { class: "lang-btn" + (STATE.lang === "es" ? " selected" : ""), onclick: () => { STATE.lang = "es"; render(); } }, "🇪🇸 ES"),
+    el("button", { class: "lang-btn" + (STATE.lang === "fr" ? " selected" : ""), onclick: () => { STATE.lang = "fr"; Store.set("lang", "fr"); render(); } }, "🇫🇷 FR"),
+    el("button", { class: "lang-btn" + (STATE.lang === "en" ? " selected" : ""), onclick: () => { STATE.lang = "en"; Store.set("lang", "en"); render(); } }, "🇺🇸 EN"),
+    el("button", { class: "lang-btn" + (STATE.lang === "es" ? " selected" : ""), onclick: () => { STATE.lang = "es"; Store.set("lang", "es"); render(); } }, "🇪🇸 ES"),
   ]));
 
   wrap.appendChild(el("div", { class: "intro-hero" }, [
@@ -4005,7 +4046,7 @@ function renderHome() {
             prepareSeason();
           },
         }, [
-          el("div", { class: "history-rank" }, POSITION_ICONS[s.player.position] || "⚾"),
+          el("div", { class: "history-rank", "aria-hidden": "true" }, POSITION_ICONS[s.player.position] || "⚾"),
           el("div", { class: "history-main" }, [
             el("div", { class: "history-name" }, `${s.player.name} · ${posName(s.player.position)}`),
             el("div", { class: "history-sub" }, `${COUNTRIES[s.player.country].flag} · ${T("seasonSummary", s.player.year, s.player.age)}`),
@@ -4025,10 +4066,13 @@ function renderHome() {
 
   wrap.appendChild(el("div", { class: "card" }, [
     el("div", { class: "section-label" }, T("choosePosition")),
-    el("div", { class: "pos-pill-row" }, POSITIONS.map(p => el("div", {
-      class: "pos-pill" + (STATE.position === p ? " selected" : ""),
+    el("div", { class: "pos-card-grid" }, POSITIONS.map(p => el("div", {
+      class: "pos-card" + (STATE.position === p ? " selected" : ""),
       onclick: () => { STATE.position = p; render(); },
-    }, `${POSITION_ICONS[p] || ""} ${posName(p)}`))),
+    }, [
+      el("div", { class: "pos-card-title" }, [el("span", { "aria-hidden": "true" }, `${POSITION_ICONS[p] || ""} `), posName(p)]),
+      el("div", { class: "pos-card-desc" }, positionDescText(p)),
+    ]))),
   ]));
 
   wrap.appendChild(el("div", { class: "card" }, [
@@ -4104,7 +4148,7 @@ function renderProgressPanel() {
     el("div", { class: "section-label" }, T("rivalsSection")),
     (p.rivals && p.rivals.length)
       ? el("div", { class: "history-list" }, p.rivals.map(r => el("div", { class: "history-row" }, [
-          el("div", { class: "history-rank" }, COUNTRIES[r.country] ? COUNTRIES[r.country].flag : "⚾"),
+          el("div", { class: "history-rank", "aria-hidden": "true" }, COUNTRIES[r.country] ? COUNTRIES[r.country].flag : "⚾"),
           el("div", { class: "history-main" }, [
             el("div", { class: "history-name" }, r.name),
             el("div", { class: "history-sub" }, `${p.rivalWins || 0} ${T("winsAgainst")} 3`),
@@ -4117,7 +4161,7 @@ function renderProgressPanel() {
     wrap.appendChild(el("div", { class: "card" }, [
       el("div", { class: "section-label" }, T("teammateSection")),
       el("div", { class: "history-row" }, [
-        el("div", { class: "history-rank" }, "🤝"),
+        el("div", { class: "history-rank", "aria-hidden": "true" }, "🤝"),
         el("div", { class: "history-main" }, [
           el("div", { class: "history-name" }, `${p.teammate.name} · ${p.teammate.team || ""}`),
           el("div", { class: "history-sub" }, `${T("fatigueLabel") === "Fatigue" ? "Affinité" : STATE.lang === "en" ? "Affinity" : "Afinidad"}: ${p.teammate.affinity}/100`),
@@ -4130,7 +4174,7 @@ function renderProgressPanel() {
     el("div", { class: "section-label" }, T("sponsorSection") ),
     p.sponsor
       ? el("div", { class: "history-row" }, [
-          el("div", { class: "history-rank" }, "🤑"),
+          el("div", { class: "history-rank", "aria-hidden": "true" }, "🤑"),
           el("div", { class: "history-main" }, [
             el("div", { class: "history-name" }, p.sponsor.brand),
             el("div", { class: "history-sub" }, p.sponsor.personality === "demanding" ? "★★★" : "★☆☆"),
@@ -4143,7 +4187,7 @@ function renderProgressPanel() {
     wrap.appendChild(el("div", { class: "card" }, [
       el("div", { class: "section-label" }, T("chronicIssueSection")),
       el("div", { class: "history-row" }, [
-        el("div", { class: "history-rank" }, "🩹"),
+        el("div", { class: "history-rank", "aria-hidden": "true" }, "🩹"),
         el("div", { class: "history-main" }, [
           el("div", { class: "history-name" }, statLabel(STAT_LABELS[p.chronicIssue.stat])),
           el("div", { class: "history-sub" }, T("chronicIssueSub")),
@@ -4238,7 +4282,6 @@ function renderSeason() {
   const events = STATE.pendingEvents;
   const idx = STATE.eventIndex;
   const wrap = el("div");
-  wrap.appendChild(renderScoreboard(p));
 
   if (idx >= events.length) {
     finalizeSeason();
@@ -4248,7 +4291,9 @@ function renderSeason() {
 
   const ev = localizeEvent(events[idx], p.team);
   const catLabel = ev.category === "match" ? T("matchCat") : ev.category === "personnel" ? T("personalCat") : "⚾";
-  wrap.appendChild(el("div", { class: "card" }, [
+  const layout = el("div", { class: "action-layout" });
+  layout.appendChild(renderScoreboard(p));
+  layout.appendChild(el("div", { class: "card" }, [
     el("div", { class: "section-label" }, T("eventCounter", catLabel, idx + 1, events.length, p.year)),
     el("h2", {}, ev.title),
     el("p", { class: "desc" }, ev.text),
@@ -4272,6 +4317,7 @@ function renderSeason() {
       } }, choice.label)
     )),
   ]));
+  wrap.appendChild(layout);
   return wrap;
 }
 
@@ -4279,13 +4325,15 @@ function renderConsequence() {
   const p = STATE.player;
   const c = STATE.pendingConsequence;
   const wrap = el("div");
-  wrap.appendChild(renderScoreboard(p));
-  wrap.appendChild(el("div", { class: "card" }, [
+  const layout = el("div", { class: "action-layout" });
+  layout.appendChild(renderScoreboard(p));
+  layout.appendChild(el("div", { class: "card" }, [
     el("div", { class: "section-label" }, c.title),
     el("h2", {}, c.choiceLabel),
     el("p", { class: "desc" }, c.result || narrativeFromDiffs(c.diffs)),
     renderDiffList(c.diffs),
   ]));
+  wrap.appendChild(layout);
   wrap.appendChild(el("button", { class: "primary-btn", onclick: () => {
     STATE.eventIndex += 1;
     STATE.screen = "season";
@@ -4834,22 +4882,26 @@ function renderScoreboard(p, opts = {}) {
         el("div", { class: "player-sub", style: "margin-top:6px;" }, level),
       ]),
     ]),
-    el("div", { class: "stat-grid" }, statEntries.map(([icon, label, val]) =>
-      el("div", { class: "stat" }, [
+    el("div", { class: "stat-grid" }, statEntries.map(([icon, label, val]) => {
+      const statColor = val >= 70 ? "var(--stat-high)" : val >= 40 ? "var(--stat-mid)" : "var(--red)";
+      return el("div", { class: "stat" }, [
         el("div", { class: "val" }, String(val)),
-        el("div", { class: "bar" }, el("div", { style: `width:${val}%` })),
-        el("div", { class: "lbl" }, `${icon} ${label}`),
-      ])
-    )),
+        el("div", { class: "bar" }, el("div", { style: `width:${val}%; --stat-color:${statColor};` })),
+        el("div", { class: "lbl" }, [el("span", { "aria-hidden": "true" }, `${icon} `), label]),
+      ]);
+    })),
     el("div", { class: "stat-legend" },
       `${STAT_ICONS.contact} ${sh.con} = ${statLabel("Contact")} · ${STAT_ICONS.power} ${sh.pui} = ${statLabel("Puissance")} · ${STAT_ICONS.speed} ${sh.vit} = ${statLabel("Vitesse")} · ${STAT_ICONS.defense} ${sh.def} = ${statLabel("Défense")} · ${STAT_ICONS.control} ${p.isPitcher ? sh.ctrl : sh.ad} = ${p.isPitcher ? statLabel("Contrôle") : T("fieldingLabel")}`
     ),
     el("div", { class: "vitals" }, [
-      el("span", {}, [`${VITAL_ICONS.morale} `, el("b", {}, p.morale)]),
-      el("span", {}, [`${VITAL_ICONS.health} `, el("b", {}, p.health)]),
-      el("span", {}, [`${VITAL_ICONS.reputation} `, el("b", {}, p.reputation)]),
-      el("span", {}, ["📊 ", el("b", {}, overall(p))]),
+      el("span", { title: `${T("moraleLabel")}: ${p.morale}/100` }, [el("span", { "aria-hidden": "true" }, `${VITAL_ICONS.morale} `), el("b", {}, p.morale)]),
+      el("span", { title: `${T("healthLabel")}: ${p.health}/100` }, [el("span", { "aria-hidden": "true" }, `${VITAL_ICONS.health} `), el("b", {}, p.health)]),
+      el("span", { title: `${T("reputationLabel")}: ${p.reputation}/100` }, [el("span", { "aria-hidden": "true" }, `${VITAL_ICONS.reputation} `), el("b", {}, p.reputation)]),
+      el("span", { title: `${T("scoreLabel")}: ${overall(p)}` }, [el("span", { "aria-hidden": "true" }, "📊 "), el("b", {}, overall(p))]),
     ]),
+    el("div", { class: "vitals-legend" },
+      `${VITAL_ICONS.morale} ${T("moraleLabel")} · ${VITAL_ICONS.health} ${T("healthLabel")} · ${VITAL_ICONS.reputation} ${T("reputationLabel")} · 📊 ${T("scoreLabel")}`
+    ),
     p.salary > 0 ? el("div", { class: "vitals", style: "margin-top:6px;" }, [
       el("span", {}, [`💰 ${c.currency}${formatMoney(p.salary)} ${T("perYear")}`]),
       el("span", {}, [`📄 ${T("contractLabel")} ${p.contractYearsLeft} ${T("contract")}(s)`]),
@@ -4867,6 +4919,14 @@ function renderScoreboard(p, opts = {}) {
 }
 
 render();
+
+// Rattrapage si la langue est stockée via window.storage (hôte) plutôt que localStorage seul.
+Store.get("lang").then(v => {
+  if ((v === "fr" || v === "en" || v === "es") && v !== STATE.lang) {
+    STATE.lang = v;
+    render();
+  }
+}).catch(() => { /* best effort */ });
 
 function setupPWA() {
   try {
