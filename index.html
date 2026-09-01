@@ -3123,9 +3123,23 @@ function shouldForceRetire(player) {
 
 function careerReport(player) {
   const ov = overall(player);
-  const trophyScore = player.trophies.length * 2.2;
-  const longevity = clamp(player.yearsInTop || 0, 0, 20);
-  const score = clamp(Math.round(ov * 0.45 + trophyScore + longevity * 0.9 + player.reputation * 0.12), 1, 99);
+  const yearsInTop = player.yearsInTop || 0;
+  const sh = player.seasonHistory || [];
+  // Score de tier repensé pour juger la qualité de la carrière plutôt que sa seule durée :
+  // l'ancienne formule (trophées bruts + longévité linéaire jusqu'à 20 ans) faisait qu'une
+  // carrière longue mais médiocre battait presque toujours une carrière courte mais excellente
+  // (vérifié empiriquement : ~33% de "Légende" en jouant jusqu'à la retraite forcée à 42 ans,
+  // contre 0% en partant dès 30 ans, quel que soit le niveau de jeu réel).
+  const avgOv = sh.length ? sh.reduce((s, x) => s + (x.ov || 0), 0) / sh.length : ov;
+  const trophyRate = player.trophies.length / Math.max(1, yearsInTop);
+  const longevityBonus = clamp(yearsInTop, 0, 15);
+  const score = clamp(Math.round(
+    ov * 0.30 +           // niveau atteint en fin de carrière
+    avgOv * 0.25 +        // constance du niveau sur l'ensemble de la carrière
+    trophyRate * 14 +     // taux de trophées par saison au sommet, pas le total brut
+    longevityBonus * 0.5 + // bonus de longévité réduit et plafonné plus tôt
+    player.reputation * 0.10
+  ), 1, 99);
   let tier;
   if (score >= 90) tier = "Légende — Hall of Fame";
   else if (score >= 75) tier = "Superstar";
@@ -4623,7 +4637,9 @@ function renderSeasonSummary() {
     )),
   ]));
 
-  const canRetire = p.age >= 30;
+  // Seuil abaissé (24 ans au lieu de 30) : une carrière courte mais excellente doit rester
+  // une stratégie viable plutôt que d'être plafonnée par un minimum de saisons imposé.
+  const canRetire = p.age >= 24;
   const forceRetire = shouldForceRetire(p);
 
   if (forceRetire) {
