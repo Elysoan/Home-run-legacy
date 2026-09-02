@@ -340,6 +340,15 @@ function renewContract(player) {
   log(player, `Nouveau contrat signé avec les ${player.team} : ${c.currency}${formatMoney(player.salary)} /an sur ${player.contractYearsLeft} saison(s).`);
 }
 
+// Même formule de base que renewContract(), mais avec un bonus/malus ajustable par
+// choix de négociation (ex: +0.2 pour une négociation payante, -0.1 pour un contrat
+// longue durée cédé en échange de la sécurité).
+function negotiateSalary(player, raiseBonus) {
+  const perf = clamp(overall(player) + (player.reputation - 50) / 4, 1, 99);
+  const raiseFactor = 1 + clamp((perf - 45) / 100, -0.15, 0.6) + (player.trophies.length > 0 ? 0.1 : 0) + (raiseBonus || 0);
+  player.salary = Math.max(initialSalary(player.country, 0.2), Math.round((player.salary || initialSalary(player.country, 0.3)) * raiseFactor));
+}
+
 // ---------- Classement de ligue simulé ----------
 // Un mini-classement fictif (5-6 équipes) généré chaque saison au sommet : les autres
 // équipes évoluent aléatoirement, la tienne est légèrement influencée par ta performance.
@@ -1313,6 +1322,165 @@ function allSeasonEventGenerators(player) {
       ],
     }),
   });
+
+  // --- Renégociation de contrat ---
+  // Remplace l'ancien renouvellement automatique et silencieux. Garanti dès que le
+  // contrat expire (voir la garantie dédiée dans seasonEventPool). Les options varient
+  // selon la réalité du marché du travail de chaque pays modélisé : agence libre aux
+  // États-Unis (un joueur peut vraiment se retrouver avec une offre moins bonne s'il la
+  // teste), marché de transferts façon football au Mexique (déjà dans l'esprit du jeu),
+  // pouvoir de négociation limité d'un jeune prospect en académie en République
+  // dominicaine, club fort qui garde la main au Japon/Corée/Taïwan (la vraie porte de
+  // sortie y est le posting, déjà modélisé séparément — pas un refus de contrat
+  // classique). Cuba reste sur le renouvellement automatique (système étatique
+  // centralisé, aucune marge de négociation).
+  if (player.country !== "cu") {
+    gens.push({
+      contractNegotiationType: true,
+      customCheck: (p) => (p.contractYearsLeft || 0) <= 0,
+      build: () => {
+        const country = player.country;
+        const base = [
+          {
+            label: "Accepter l'offre du club",
+            sub: "Renouvellement standard, sans risque",
+            result: "Tu signes l'offre de renouvellement proposée par le club, sans faire d'histoires.",
+            apply: (p) => {
+              negotiateSalary(p, 0);
+              p.contractYearsLeft = rnd(2, 4);
+              const c2 = COUNTRIES[p.country];
+              log(p, `Nouveau contrat signé avec les ${p.team} : ${c2.currency}${formatMoney(p.salary)} /an sur ${p.contractYearsLeft} saison(s).`);
+            },
+          },
+          {
+            label: "Négocier plus fort",
+            sub: "Conséquence incertaine : le club peut céder... ou se braquer",
+            result: "Tu mets la pression pour obtenir davantage, quitte à tendre la relation.",
+            apply: (p) => {
+              const success = Math.random() < (p.clutch ? 0.6 : 0.45);
+              negotiateSalary(p, success ? rnd(15, 25) / 100 : -rnd(2, 8) / 100);
+              p.contractYearsLeft = rnd(2, 4);
+              const c2 = COUNTRIES[p.country];
+              if (success) {
+                p.reputation = clamp(p.reputation + rnd(2, 5), 0, 100);
+                log(p, `Négociation payante : nouveau contrat de ${c2.currency}${formatMoney(p.salary)} /an avec les ${p.team}.`);
+              } else {
+                p.morale = clamp(p.morale - rnd(2, 5), 0, 100);
+                log(p, `Le club se braque : contrat en retrait signé avec les ${p.team}, ${c2.currency}${formatMoney(p.salary)} /an.`);
+              }
+            },
+          },
+          {
+            label: "Signer un contrat long terme",
+            sub: "Sécurité financière sur la durée, moins d'upside immédiat",
+            result: "Tu privilégies la stabilité : un engagement long, quitte à concéder un peu sur le taux annuel.",
+            apply: (p) => {
+              negotiateSalary(p, -0.1);
+              p.contractYearsLeft = rnd(5, 6);
+              const c2 = COUNTRIES[p.country];
+              log(p, `Contrat longue durée signé avec les ${p.team} : ${c2.currency}${formatMoney(p.salary)} /an sur ${p.contractYearsLeft} saisons.`);
+            },
+          },
+          {
+            label: "Signer très court, parier sur soi",
+            sub: "Un an à tarif premium si tu es en forme, mais retour à la négociation dès la saison prochaine",
+            result: "Tu paries sur toi-même : un contrat d'un an, à prendre ou à laisser.",
+            apply: (p) => {
+              const perf = clamp(overall(p) + (p.reputation - 50) / 4, 1, 99);
+              negotiateSalary(p, perf >= 55 ? rnd(10, 20) / 100 : 0);
+              p.contractYearsLeft = 1;
+              const c2 = COUNTRIES[p.country];
+              log(p, `Contrat d'un an signé avec les ${p.team} : ${c2.currency}${formatMoney(p.salary)} /an.`);
+            },
+          },
+        ];
+
+        if (country === "usa") {
+          base.push({
+            label: "Refuser, tester le marché libre",
+            sub: "Conséquence incertaine : une franchise rivale peut se battre pour toi... ou pas",
+            result: "Tu refuses l'offre et te déclares agent libre, prêt à voir ce que le marché propose.",
+            apply: (p) => {
+              const perf = clamp(overall(p) + (p.reputation - 50) / 4, 1, 99);
+              const chance = clamp(0.35 + (perf - 50) / 150 + p.reputation / 300, 0.15, 0.75);
+              const success = Math.random() < chance;
+              const c2 = COUNTRIES[p.country];
+              p.team = pick(c2.teams.filter(t => t !== p.team));
+              if (success) {
+                negotiateSalary(p, rnd(25, 40) / 100);
+                p.contractYearsLeft = rnd(2, 4);
+                p.reputation = clamp(p.reputation + rnd(4, 9), 0, 100);
+                log(p, `Guerre d'enchères remportée : signe chez les ${p.team} pour ${c2.currency}${formatMoney(p.salary)} /an.`);
+              } else {
+                negotiateSalary(p, -rnd(5, 15) / 100);
+                p.contractYearsLeft = rnd(1, 2);
+                p.morale = clamp(p.morale - rnd(3, 7), 0, 100);
+                log(p, `Marché froid : signe un contrat au rabais chez les ${p.team}, ${c2.currency}${formatMoney(p.salary)} /an.`);
+              }
+            },
+          });
+        }
+
+        if (country === "mx") {
+          base.push({
+            label: "Demander à être transféré vers un autre club",
+            sub: "Conséquence incertaine : un club rival peut te réclamer... ou le tien peut te retenir",
+            result: "Tu fais savoir à ton club que tu souhaites être transféré ailleurs.",
+            apply: (p) => {
+              const perf = clamp(overall(p) + (p.reputation - 50) / 4, 1, 99);
+              const chance = clamp(0.3 + (perf - 50) / 150 + p.reputation / 300, 0.15, 0.7);
+              const success = Math.random() < chance;
+              const c2 = COUNTRIES[p.country];
+              if (success) {
+                p.team = pick(c2.teams.filter(t => t !== p.team));
+                negotiateSalary(p, rnd(15, 30) / 100);
+                p.contractYearsLeft = rnd(2, 4);
+                p.reputation = clamp(p.reputation + rnd(3, 7), 0, 100);
+                log(p, `Transfert accepté : rejoint les ${p.team} pour ${c2.currency}${formatMoney(p.salary)} /an.`);
+              } else {
+                negotiateSalary(p, -rnd(3, 10) / 100);
+                p.contractYearsLeft = rnd(1, 2);
+                p.morale = clamp(p.morale - rnd(2, 5), 0, 100);
+                log(p, `Ton club refuse de te libérer : tu restes chez les ${p.team} à ${c2.currency}${formatMoney(p.salary)} /an.`);
+              }
+            },
+          });
+        }
+
+        let choices = base;
+        if (country === "do") {
+          choices = [
+            base[0],
+            {
+              label: "Tenter de négocier via ton buscón",
+              sub: "Petit risque : ton agent peut obtenir un peu plus... ou rien du tout",
+              result: "Ton buscón tente d'obtenir un peu plus de l'académie en ton nom.",
+              apply: (p) => {
+                const success = Math.random() < 0.5;
+                negotiateSalary(p, success ? rnd(8, 15) / 100 : 0);
+                p.contractYearsLeft = rnd(2, 3);
+                const c2 = COUNTRIES[p.country];
+                log(p, success
+                  ? `Ton buscón obtient une petite amélioration : ${c2.currency}${formatMoney(p.salary)} /an.`
+                  : `L'académie ne bouge pas d'un centime : ${c2.currency}${formatMoney(p.salary)} /an.`);
+              },
+            },
+          ];
+        }
+
+        const title = country === "usa" ? "Fin de contrat : place à la négociation"
+          : country === "mx" ? "Fin de contrat : ton avenir au club"
+          : country === "do" ? "Fin de contrat avec l'académie"
+          : "Fin de contrat : le club garde la main";
+        const text = country === "usa" ? "Ton contrat arrive à échéance. À toi de décider comment aborder la suite."
+          : country === "mx" ? "Ton contrat arrive à échéance. Comme au football, ton avenir peut aussi passer par un transfert."
+          : country === "do" ? "Ton contrat d'académie arrive à échéance. Ton buscón peut tenter sa chance, mais le rapport de force reste inégal."
+          : "Ton contrat arrive à échéance. Ici, le club garde une grande partie du pouvoir de décision — la vraie porte de sortie reste le posting, s'il t'est un jour proposé.";
+
+        return { id: "contract_negotiation", title, text, choices };
+      },
+    });
+  }
 
   // --- Pool générique (toutes ligues) ---
   gens.push({
@@ -2916,13 +3084,23 @@ function seasonEventPool(player) {
   const extraCount = clamp(targetTotal - always.length, 1, withKeys.length);
   let chosenOptional = withKeys.slice(0, extraCount).map(x => x.g);
 
+  // Renégociation de contrat : garantie immédiate, pas soumise au tirage pondéré — dès
+  // que le contrat est expiré, l'enjeu financier ne doit jamais se perdre dans le hasard
+  // du pool (contrairement aux transferts ci-dessous, plus rares et pensés comme un bonus).
+  const contractCandidates = optional.filter(g => g.contractNegotiationType);
+  if (contractCandidates.length && !chosenOptional.some(g => g.contractNegotiationType)) {
+    chosenOptional[chosenOptional.length - 1] = contractCandidates[0];
+  }
+
   // Garantie anti-malchance : si aucun événement de transfert/contrat n'est apparu
   // depuis 3 saisons alors qu'un tel événement est disponible cette saison, on l'insère de force.
   const transferCandidates = optional.filter(g => g.transferType);
   const seasonsWithout = player.seasonsSinceTransferEvent || 0;
   const alreadyHasTransfer = chosenOptional.some(g => g.transferType);
   if (!alreadyHasTransfer && seasonsWithout >= 3 && transferCandidates.length) {
-    chosenOptional[chosenOptional.length - 1] = pick(transferCandidates);
+    // Ne jamais écraser le slot de négociation de contrat, prioritaire sur ce tirage.
+    const replaceIdx = chosenOptional.findIndex(g => !g.contractNegotiationType);
+    chosenOptional[replaceIdx >= 0 ? replaceIdx : chosenOptional.length - 1] = pick(transferCandidates);
   }
   player.seasonsSinceTransferEvent = chosenOptional.some(g => g.transferType) ? 0 : seasonsWithout + 1;
 
@@ -2935,7 +3113,8 @@ function seasonEventPool(player) {
   const seasonsWithoutIntl = player.seasonsSinceIntlTransferEvent || 0;
   const alreadyHasIntl = chosenOptional.some(g => g.internationalTransferType);
   if (!alreadyHasIntl && seasonsWithoutIntl >= 2 && intlCandidates.length) {
-    const replaceIdx = chosenOptional.findIndex(g => !g.transferType);
+    // Ne jamais écraser le slot de négociation de contrat non plus.
+    const replaceIdx = chosenOptional.findIndex(g => !g.transferType && !g.contractNegotiationType);
     chosenOptional[replaceIdx >= 0 ? replaceIdx : chosenOptional.length - 1] = pick(intlCandidates);
   }
   player.seasonsSinceIntlTransferEvent = chosenOptional.some(g => g.internationalTransferType) ? 0 : (intlCandidates.length ? seasonsWithoutIntl + 1 : seasonsWithoutIntl);
@@ -4609,7 +4788,10 @@ function finalizeSeason() {
 
   if (p.salary > 0) {
     p.contractYearsLeft = (p.contractYearsLeft || 0) - 1;
-    if (p.contractYearsLeft <= 0) renewContract(p);
+    // Partout sauf Cuba (système étatique centralisé, aucune marge de négociation), le
+    // renouvellement n'est plus automatique : un événement de négociation garanti prend
+    // le relais la saison suivante (voir "contract_negotiation" dans allSeasonEventGenerators).
+    if (p.contractYearsLeft <= 0 && p.country === "cu") renewContract(p);
   }
 }
 
