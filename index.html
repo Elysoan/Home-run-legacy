@@ -293,22 +293,6 @@ function randomName(countryKey) {
 // toute la carrière, plus des bonus de trophées, forme le score de points de carrière.
 
 const TROPHY_POINTS = { mvp: 40, allstar: 15, rookie: 20, championship: 60, statTitle: 18 };
-const POINTS_FIELDS = ["contact", "power", "speed", "defense", "control", "morale", "health", "reputation"];
-
-function pointsSnapshot(player) {
-  return {
-    contact: player.stats.contact, power: player.stats.power, speed: player.stats.speed,
-    defense: player.stats.defense, control: player.stats.control,
-    morale: player.morale, health: player.health, reputation: player.reputation,
-  };
-}
-
-function sumPointsDiff(before, after) {
-  let total = 0;
-  for (const k of POINTS_FIELDS) total += (after[k] - before[k]);
-  return total;
-}
-
 // ---------- Contrat & salaire ----------
 // Ordres de grandeur inspirés des minimums réels de chaque ligue (SSL, SDL, MCBL, LAB),
 // simplifiés pour rester lisibles dans une simulation narrative.
@@ -1582,6 +1566,11 @@ function allSeasonEventGenerators(player) {
   // contrat expiré pour l'autre), donc ne se déclenchent jamais la même saison.
   gens.push({
     onlyIfTop: true,
+    // Poids relevé : le pool total dépasse la centaine de générateurs simultanément
+    // actifs, donc un poids par défaut (1) rendait cet événement quasi invisible même
+    // une fois éligible (~2% de chance par saison, mesuré empiriquement) — trop rare
+    // pour un joueur qui vient d'enchaîner une saison exceptionnelle.
+    weight: 3,
     customCheck: (p) => (p.contractYearsLeft || 0) > 0 && p.lastSeasonLine && p.lastSeasonLine.perf >= 80,
     build: () => ({
       id: "early_extension",
@@ -3168,120 +3157,6 @@ function seasonEventPool(player) {
 }
 
 
-// ---------- Boucle de saison ----------
-
-function playSeason(player, decisions) {
-  // decisions: tableau d'index de choix pour chaque événement de la saison, dans l'ordre fourni par seasonEventPool
-  player.year += 1;
-  player.age += 1;
-  if (player.yearsInTop === undefined) player.yearsInTop = 0;
-
-  const events = seasonEventPool(player);
-  const chosen = [];
-  events.forEach((ev, i) => {
-    const choiceIdx = decisions && decisions[i] !== undefined ? decisions[i] : rnd(0, ev.choices.length - 1);
-    const choice = ev.choices[clamp(choiceIdx, 0, ev.choices.length - 1)];
-    const before = pointsSnapshot(player);
-    choice.apply(player);
-    const after = pointsSnapshot(player);
-    const diff = sumPointsDiff(before, after);
-    player.careerPoints = (player.careerPoints || 0) + diff;
-    let extraFatigue = 0, extraHealthRisk = 0;
-    if (ev.weather) { extraFatigue = ev.weather.fatigue; extraHealthRisk = ev.weather.healthRisk; }
-    if (extraHealthRisk && Math.random() < 0.3) player.health = clamp(player.health - rnd(1, extraHealthRisk), 0, 100);
-    player.fatigue = clamp((player.fatigue || 0) + fatigueFromChoice(Math.abs(diff), after.health - before.health) + extraFatigue, 0, 100);
-    chosen.push({ event: ev.title, choice: choice.label });
-  });
-
-  clampStats(player);
-  if (player.team) { ensureTeammate(player); ensureClubRival(player); }
-  const c = COUNTRIES[player.country];
-  const ov = overall(player);
-  if (!player.inTopLeague) {
-    const promoChance = clamp(0.22 + ov / 180, 0.22, 0.72);
-    if (Math.random() < promoChance) {
-      if (player.level < c.minorLevels.length - 1) {
-        player.level += 1;
-        log(player, `Promu à l'échelon ${c.minorLevels[player.level]}.`);
-      } else {
-        player.inTopLeague = true;
-        log(player, `Appelé en ${c.topLevel} pour la première fois !`);
-      }
-    }
-  } else {
-    player.yearsInTop += 1;
-  }
-
-  // Performance de fin de saison
-  const perf = clamp(ov + rnd(-10, 10) + Math.round((player.morale - 50) / 10) - Math.round((100 - player.health) / 15) - Math.round((player.fatigue || 0) / 12), 1, 99);
-  const statLine = generateStatLine(player, perf);
-  const seasonLine = { year: player.year, age: player.age, team: player.team, level: player.inTopLeague ? c.topLevel : c.minorLevels[player.level], perf, ov, statLine };
-  player.lastSeasonLine = seasonLine;
-  if (player.inTopLeague) {
-    accumulateCareerStats(player, statLine);
-    player.leagueStandings = generateStandings(player, perf);
-  }
-
-  // Résolution du pari de confiance fait en interview la saison précédente
-  if (player.confidentBet) {
-    if (perf >= player.confidentBet.threshold) {
-      player.reputation += rnd(4, 8);
-      log(player, `Ton pari de confiance en interview paie : la saison suit derrière les mots !`);
-    } else {
-      player.reputation -= rnd(4, 8);
-      log(player, `Ton pari de confiance en interview se retourne contre toi : la saison ne suit pas.`);
-    }
-    player.confidentBet = null;
-  }
-
-  const trophyCountBefore = player.trophies.length;
-  if (player.inTopLeague) {
-    if (perf >= 88 && Math.random() < 0.3) {
-      player.trophies.push(`${c.mvpAward} (${player.year}e saison)`);
-      player.careerPoints += TROPHY_POINTS.mvp;
-      log(player, `Élu ${c.mvpAward} de la ligue !`);
-      player.pendingInterview = { type: "mvp" };
-    } else if (perf >= 80 && Math.random() < 0.5) {
-      player.trophies.push(`Sélection All-Star (${player.year}e saison)`);
-      player.careerPoints += TROPHY_POINTS.allstar;
-      log(player, `Sélectionné pour le match des étoiles.`);
-    }
-    if (player.yearsInTop === 1 && perf >= 68) {
-      player.trophies.push(`${c.rookieAward}`);
-      player.careerPoints += TROPHY_POINTS.rookie;
-      log(player, `Élu ${c.rookieAward} !`);
-    }
-    const standings = player.leagueStandings || [];
-    const teamRank = standings.findIndex((row) => row.team === player.team) + 1;
-    if (teamRank === 1) {
-      player.trophies.push(`${c.trophy} (${player.year}e saison)`);
-      player.careerPoints += TROPHY_POINTS.championship;
-      player.championshipsWon = (player.championshipsWon || 0) + 1;
-      log(player, `${player.team} termine 1re du classement et remporte le titre ultime : ${c.trophy} !`);
-      player.pendingInterview = { type: "championship" };
-    } else if (teamRank > 0) {
-      log(player, `${player.team} termine ${teamRank}e du classement de la ligue cette saison — pas de titre cette fois.`);
-    }
-    checkStatAwards(player, c, statLine, perf);
-  }
-  checkSponsorStatus(player, trophyCountBefore);
-
-  // Vieillissement différencié par statistique
-  applyAging(player);
-  checkRandomInjury(player);
-  applyFatigueRecovery(player);
-  player.health = clamp(player.health + rnd(2, 8), 40, 100);
-  clampStats(player);
-
-  // Décompte et renouvellement de contrat
-  if (player.salary > 0) {
-    player.contractYearsLeft = (player.contractYearsLeft || 0) - 1;
-    if (player.contractYearsLeft <= 0) renewContract(player);
-  }
-
-  return { events: chosen, seasonLine };
-}
-
 function clampStats(player) {
   for (const k in player.stats) player.stats[k] = clamp(player.stats[k], 1, 99);
   player.morale = clamp(player.morale, 0, 100);
@@ -3397,7 +3272,7 @@ const UI_TXT = {
     intro: "Choisis ton pays et ton poste. De tes 16 ans jusqu'à la retraite, écris ta légende du baseball saison après saison — drafts, transferts, blessures, trophées.",
     choosePosition: "1. Choisis ton poste", chooseCountry: "2. Choisis ton pays",
     choosePrompt: "Choisis un pays et un poste", start: "Commencer —",
-    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", moraleLabel: "Moral", healthLabel: "Santé", reputationLabel: "Réputation", scoreLabel: "Score", progressionTitle: "Progression de la carrière", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
+    historyBtn: "📜 Historique", achievementsBtn: "🏆 Récompenses", tutorialBtn: "❓ Comment jouer", resumeTitle: "▶️ Reprendre une carrière", shareCard: "📤 Partager ma carrière", progressPanel: "📊 Progression", fatigueLabel: "Fatigue", moraleLabel: "Moral", healthLabel: "Santé", reputationLabel: "Réputation", scoreLabel: "Score", progressionTitle: "Progression de la carrière", progressTitle: "PROGRESSION EN COURS", rivalsSection: "Rivaux", clubDerbySection: "Rivalité de club", derbyWinsLabel: "derby(s) remporté(s)", teammateSection: "Coéquipier", sponsorSection: "Sponsor personnel", noSponsor: "Aucun sponsor personnel pour le moment.", winsAgainst: "victoire(s) sur", noRivalsYet: "Aucun duel encore disputé.", chronicIssueSection: "Fragilité chronique", chronicIssueSub: "Reste vigilant, risque de blessure accru", standingsSection: "Classement de la ligue", winsShort: "V", recordsSection: "🏛️ Palmarès inter-carrières", recordPoints: "Plus haut score", recordHR: "Plus de circuits en carrière", recordRBI: "Plus de points produits en carrière", recordSB: "Plus de buts volés en carrière", recordAVG: "Meilleure moyenne au bâton", recordWins: "Plus de victoires en carrière", recordERA: "Meilleure moyenne de points mérités", recordK: "Plus de retraits sur prises en carrière",
     howStart: (top) => `Comment démarres-tu ta route vers le ${top} ?`,
     result: "Résultat", consequences: "Conséquences", startSeason: "Débuter la saison",
     eventCounter: (icon, i, n, year) => `${icon} Événement ${i} / ${n} — Saison ${year}`,
@@ -3433,7 +3308,7 @@ const UI_TXT = {
     intro: "Choose your country and position. From age 16 to retirement, write your baseball legend season by season — drafts, trades, injuries, trophies.",
     choosePosition: "1. Choose your position", chooseCountry: "2. Choose your country",
     choosePrompt: "Choose a country and a position", start: "Start —",
-    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", moraleLabel: "Morale", healthLabel: "Health", reputationLabel: "Reputation", scoreLabel: "Score", progressionTitle: "Career progression", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
+    historyBtn: "📜 History", achievementsBtn: "🏆 Rewards", tutorialBtn: "❓ How to play", resumeTitle: "▶️ Resume a career", shareCard: "📤 Share my career", progressPanel: "📊 Progress", fatigueLabel: "Fatigue", moraleLabel: "Morale", healthLabel: "Health", reputationLabel: "Reputation", scoreLabel: "Score", progressionTitle: "Career progression", progressTitle: "CURRENT PROGRESS", rivalsSection: "Rivals", clubDerbySection: "Club rivalry", derbyWinsLabel: "derby win(s)", teammateSection: "Teammate", sponsorSection: "Personal sponsor", noSponsor: "No personal sponsor yet.", winsAgainst: "win(s) over", noRivalsYet: "No duel yet.", chronicIssueSection: "Chronic fragility", chronicIssueSub: "Stay careful, elevated injury risk", standingsSection: "League standings", winsShort: "W", recordsSection: "🏛️ Cross-career records", recordPoints: "Highest score", recordHR: "Most career home runs", recordRBI: "Most career RBI", recordSB: "Most career stolen bases", recordAVG: "Best batting average", recordWins: "Most career wins", recordERA: "Best ERA", recordK: "Most career strikeouts",
     howStart: (top) => `How do you start your road to the ${top}?`,
     result: "Result", consequences: "Consequences", startSeason: "Start the season",
     eventCounter: (icon, i, n, year) => `${icon} Event ${i} / ${n} — Season ${year}`,
@@ -3469,7 +3344,7 @@ const UI_TXT = {
     intro: "Elige tu país y tu posición. Desde tus 16 años hasta el retiro, escribe tu leyenda del béisbol temporada tras temporada — drafts, traspasos, lesiones, trofeos.",
     choosePosition: "1. Elige tu posición", chooseCountry: "2. Elige tu país",
     choosePrompt: "Elige un país y una posición", start: "Empezar —",
-    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", moraleLabel: "Moral", healthLabel: "Salud", reputationLabel: "Reputación", scoreLabel: "Puntuación", progressionTitle: "Progresión de la carrera", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
+    historyBtn: "📜 Historial", achievementsBtn: "🏆 Logros", tutorialBtn: "❓ Cómo jugar", resumeTitle: "▶️ Reanudar una carrera", shareCard: "📤 Compartir mi carrera", progressPanel: "📊 Progreso", fatigueLabel: "Fatiga", moraleLabel: "Moral", healthLabel: "Salud", reputationLabel: "Reputación", scoreLabel: "Puntuación", progressionTitle: "Progresión de la carrera", progressTitle: "PROGRESO ACTUAL", rivalsSection: "Rivales", clubDerbySection: "Rivalidad de club", derbyWinsLabel: "derbi(s) ganado(s)", teammateSection: "Compañero", sponsorSection: "Patrocinador personal", noSponsor: "Todavía no tienes patrocinador personal.", winsAgainst: "victoria(s) sobre", noRivalsYet: "Todavía no hay duelos.", chronicIssueSection: "Fragilidad crónica", chronicIssueSub: "Ten cuidado, riesgo de lesión elevado", standingsSection: "Clasificación de la liga", winsShort: "V", recordsSection: "🏛️ Récords entre carreras", recordPoints: "Puntuación más alta", recordHR: "Más jonrones en carrera", recordRBI: "Más carreras impulsadas en carrera", recordSB: "Más bases robadas en carrera", recordAVG: "Mejor promedio de bateo", recordWins: "Más victorias en carrera", recordERA: "Mejor efectividad (ERA)", recordK: "Más ponches en carrera",
     howStart: (top) => `¿Cómo empiezas tu camino hacia la ${top}?`,
     result: "Resultado", consequences: "Consecuencias", startSeason: "Comenzar la temporada",
     eventCounter: (icon, i, n, year) => `${icon} Evento ${i} / ${n} — Temporada ${year}`,
@@ -4530,6 +4405,19 @@ function renderProgressPanel() {
         ])))
       : el("p", { class: "muted" }, T("noRivalsYet")),
   ]));
+
+  if (p.clubRival) {
+    wrap.appendChild(el("div", { class: "card" }, [
+      el("div", { class: "section-label" }, T("clubDerbySection")),
+      el("div", { class: "history-row" }, [
+        el("div", { class: "history-rank", "aria-hidden": "true" }, "🔥"),
+        el("div", { class: "history-main" }, [
+          el("div", { class: "history-name" }, p.clubRival),
+          el("div", { class: "history-sub" }, `${p.derbyWins || 0} ${T("derbyWinsLabel")}`),
+        ]),
+      ]),
+    ]));
+  }
 
   if (p.teammate) {
     wrap.appendChild(el("div", { class: "card" }, [
