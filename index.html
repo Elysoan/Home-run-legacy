@@ -5123,9 +5123,14 @@ function renderCareerHistory() {
     if (!list.length) {
       wrap.appendChild(el("p", { class: "muted center" }, T("noCareerYet")));
     } else {
+      // Le palmarès et le top 3 sont de taille bornée (7 records max, 3 podiums) : ils
+      // partagent la même grille 2 colonnes que renderReport. La liste "autres carrières"
+      // peut en revanche grandir sans limite au fil des parties, donc elle reste en
+      // pleine largeur pour rester lisible.
+      const topCards = [];
       const records = computeCareerRecords(list);
       if (records.length) {
-        wrap.appendChild(el("div", { class: "card" }, [
+        topCards.push(el("div", { class: "card" }, [
           el("div", { class: "section-label" }, T("recordsSection")),
           el("div", { class: "diff-list" }, records.map(r => el("div", { class: "diff-row" }, [
             el("span", { class: "diff-label" }, `${r.icon} ${r.label} — ${r.holder}`),
@@ -5135,10 +5140,11 @@ function renderCareerHistory() {
       }
       const top3 = list.slice(0, 3);
       const rest = list.slice(3);
-      wrap.appendChild(el("div", { class: "card" }, [
+      topCards.push(el("div", { class: "card" }, [
         el("div", { class: "section-label" }, T("top3")),
         el("div", { class: "history-list" }, top3.map((c, i) => renderCareerRow(c, ["🥇", "🥈", "🥉"][i]))),
       ]));
+      wrap.appendChild(el("div", { class: "report-grid" }, topCards));
       if (rest.length) {
         wrap.appendChild(el("div", { class: "card" }, [
           el("div", { class: "section-label" }, T("otherCareers", rest.length)),
