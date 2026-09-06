@@ -144,6 +144,13 @@
     .action-layout{ display:grid; grid-template-columns: 380px 1fr; align-items:start; gap:18px; }
     .action-layout .scoreboard{ margin-bottom:0; position:sticky; top:18px; }
   }
+
+  .report-grid{ display:flex; flex-direction:column; }
+  @media (min-width:900px){
+    .report-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
+    .report-grid .card{ margin-bottom:0; }
+    .report-grid > *:last-child:nth-child(odd){ grid-column: 1 / -1; }
+  }
   .country-card{
     border:1px solid var(--line); border-radius:18px; padding:16px;
     background:rgba(255,255,255,0.04); cursor:pointer; transition:.12s;
@@ -4489,8 +4496,9 @@ function renderEntry() {
   const c = COUNTRIES[STATE.player.country];
   const choices = getEntryChoices(STATE.player).map(localizeEntryChoice);
   const wrap = el("div");
-  wrap.appendChild(renderScoreboard(STATE.player, { hideTeam: true }));
-  wrap.appendChild(el("div", { class: "card" }, [
+  const layout = el("div", { class: "action-layout" });
+  layout.appendChild(renderScoreboard(STATE.player, { hideTeam: true }));
+  layout.appendChild(el("div", { class: "card" }, [
     el("h2", {}, entryLabelText(c.entryLabel)),
     el("p", { class: "desc" }, T("howStart", c.topLevel)),
     el("div", { class: "choice-list" }, choices.map(choice =>
@@ -4507,20 +4515,23 @@ function renderEntry() {
       } }, [choice.label, el("span", { class: "sub" }, choice.description)])
     )),
   ]));
+  wrap.appendChild(layout);
   return wrap;
 }
 
 function renderEntryResult() {
   const p = STATE.player;
   const wrap = el("div");
-  wrap.appendChild(renderScoreboard(p));
-  wrap.appendChild(el("div", { class: "card" }, [
+  const layout = el("div", { class: "action-layout" });
+  layout.appendChild(renderScoreboard(p));
+  layout.appendChild(el("div", { class: "card" }, [
     el("h2", {}, T("result")),
     el("div", { class: "log-feed" }, p.history.slice(-3).map(h => el("div", {}, translateLogEntry(h)))),
     el("div", { class: "section-label", style: "margin-top:14px;" }, T("consequences")),
     el("p", { class: "desc" }, STATE.entryResultText || narrativeFromDiffs(STATE.entryDiffs || [])),
     renderDiffList(STATE.entryDiffs || []),
   ]));
+  wrap.appendChild(layout);
   wrap.appendChild(el("button", { class: "primary-btn", onclick: () => { prepareSeason(); } }, T("startSeason")));
   return wrap;
 }
@@ -4684,8 +4695,9 @@ function renderSeasonSummary() {
   const p = STATE.player;
   const line = p.lastSeasonLine;
   const wrap = el("div");
-  wrap.appendChild(renderScoreboard(p));
-  wrap.appendChild(el("div", { class: "card" }, [
+  const layout = el("div", { class: "action-layout" });
+  layout.appendChild(renderScoreboard(p));
+  layout.appendChild(el("div", { class: "card" }, [
     el("h2", {}, T("seasonSummary", line.year, line.age)),
     el("p", { class: "desc" }, T("levelLine", line.level, p.team, line.perf)),
     p.inTopLeague && line.statLine ? el("p", { class: "desc", style: "font-weight:600; color:var(--chalk);" }, `${T("statLinePrefix")} ${formatStatLine(line.statLine, STATE.lang)}`) : null,
@@ -4703,6 +4715,7 @@ function renderSeasonSummary() {
       ])
     )),
   ]));
+  wrap.appendChild(layout);
 
   // Seuil abaissé (24 ans au lieu de 30) : une carrière courte mais excellente doit rester
   // une stratégie viable plutôt que d'être plafonnée par un minimum de saisons imposé.
@@ -4886,15 +4899,21 @@ function renderReport() {
     ]));
   }
 
+  // Les petites cartes de synthèse (défis, récompenses, palmarès, stats cumulées) sont
+  // regroupées dans une grille : sur mobile elles s'empilent normalement, mais sur
+  // desktop elles se répartissent sur 2 colonnes au lieu de laisser une longue colonne
+  // étroite et centrée avec beaucoup de vide de chaque côté.
+  const summaryCards = [];
+
   if (STATE.dailyNewlyCompleted && STATE.dailyNewlyCompleted.length) {
-    wrap.appendChild(el("div", { class: "card unlock-banner" }, [
+    summaryCards.push(el("div", { class: "card unlock-banner" }, [
       el("div", { class: "section-label" }, T("dailyCompleted")),
       el("ul", { class: "trophy-list" }, STATE.dailyNewlyCompleted.map(d => el("li", {}, `${d.icon} ${dailyText(d.label)}`))),
     ]));
   }
 
   if (STATE.newlyUnlocked && STATE.newlyUnlocked.length) {
-    wrap.appendChild(el("div", { class: "card unlock-banner" }, [
+    summaryCards.push(el("div", { class: "card unlock-banner" }, [
       el("div", { class: "section-label" }, T("newRewards")),
       el("ul", { class: "trophy-list" }, STATE.newlyUnlocked.map(a => {
         const tr = achText(a.label);
@@ -4904,7 +4923,7 @@ function renderReport() {
   }
 
   const grouped = groupTrophies(report.trophies);
-  wrap.appendChild(el("div", { class: "card" }, [
+  summaryCards.push(el("div", { class: "card" }, [
     el("div", { class: "section-label" }, T("trophySummary", report.trophies.length)),
     Object.keys(grouped).length
       ? el("ul", { class: "trophy-list" }, Object.keys(grouped).map(name => el("li", {}, `🏆 ${awardName(name)} ${grouped[name] > 1 ? "× " + grouped[name] : ""}`)))
@@ -4914,7 +4933,7 @@ function renderReport() {
   if (p.careerStats) {
     const cs = p.careerStats;
     const isPitcherCareer = p.isPitcher;
-    wrap.appendChild(el("div", { class: "card" }, [
+    summaryCards.push(el("div", { class: "card" }, [
       el("div", { class: "section-label" }, T("careerStatsTitle")),
       isPitcherCareer
         ? el("div", { class: "diff-list" }, [
@@ -4930,6 +4949,8 @@ function renderReport() {
           ]),
     ]));
   }
+
+  wrap.appendChild(el("div", { class: "report-grid" }, summaryCards));
 
   wrap.appendChild(el("div", { class: "card" }, [
     el("div", { class: "section-label" }, T("fullJournal")),
